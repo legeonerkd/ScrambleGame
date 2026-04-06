@@ -1,0 +1,10 @@
+# Requirements for ScrabbleGame
+
+# Testing
+pytest>=9.0.0
+
+# GUI (встроенный в Python)
+# tkinter
+
+# Для разработки
+pytest-cov>=4.1.0  # Покрытие тестами
