@@ -806,6 +806,9 @@ class ScrabbleApp:
                 # Сбрасываем счетчик замен при успешном ходе
                 self.ai_swap_counter = 0
                 
+                # Используем слово из best_move (уже собрано полное слово в SmartAI)
+                full_word = best_move.word
+                
                 # Применяем найденный ход
                 self.apply_move_with_highlight(self.player2, best_move.letters)
                 
@@ -823,8 +826,9 @@ class ScrabbleApp:
                         particle = ParticleEffect(self.board, x, y, count=30)
                         self.particles.append(particle)
                 
+                # Показываем ПОЛНОЕ слово, а не только добавленные буквы
                 messagebox.showinfo("Ход AI", 
-                                  f"🤖 AI составил слово: {best_move.word}\n"
+                                  f"🤖 AI составил слово: {full_word}\n"
                                   f"✨ Очки: {best_move.score}")
                 self.end_turn()
                 return

@@ -204,11 +204,15 @@ class SmartAI:
                 
                 letters = [(r, start_c + i, ch) for i, ch in enumerate(word)]
                 
-                # Проверяем валидность
-                ok, _ = game_state.can_place(player, letters)
+                # Проверяем валидность (это проверит и побочные слова)
+                ok, msg = game_state.can_place(player, letters)
                 if ok:
+                    # Определяем полное составленное слово
+                    placed = {(r, c): ch for r, c, ch in letters}
+                    full_word, _ = game_state._collect_word(r, start_c, 0, 1, placed)
+                    
                     score, _ = game_state._calc_score(letters)
-                    moves.append(Move(letters, score, word))
+                    moves.append(Move(letters, score, full_word))  # Используем full_word
         
         return moves
     
@@ -234,11 +238,15 @@ class SmartAI:
                 
                 letters = [(start_r + i, c, ch) for i, ch in enumerate(word)]
                 
-                # Проверяем валидность
-                ok, _ = game_state.can_place(player, letters)
+                # Проверяем валидность (это проверит и побочные слова)
+                ok, msg = game_state.can_place(player, letters)
                 if ok:
+                    # Определяем полное составленное слово
+                    placed = {(r, c): ch for r, c, ch in letters}
+                    full_word, _ = game_state._collect_word(start_r, c, 1, 0, placed)
+                    
                     score, _ = game_state._calc_score(letters)
-                    moves.append(Move(letters, score, word))
+                    moves.append(Move(letters, score, full_word))  # Используем full_word
         
         return moves
     
