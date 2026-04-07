@@ -528,32 +528,55 @@ class ScrabbleApp:
 
         from models.game_state import POINTS
         
-        for i, ch in enumerate(self.state.racks[self.current]):
+        current_rack = self.state.racks.get(self.current, [])
+        
+        for i, ch in enumerate(current_rack):
             if i in used:
                 continue
             
-            # Вычисляем позицию плитки
-            x = i * self.tile_spacing + (self.tile_width // 2 + 10)
+            # Простой расчет позиции
+            x = i * self.tile_spacing + 45
+            y = self.rack_height // 2
             
             # Определяем цвет плитки
             if self.selected_tile and self.selected_tile[0] == i:
-                color_top = Colors.LETTER_SELECTED
-                color_shadow = "#0abde3"
+                fill_color = Colors.LETTER_SELECTED
+                outline_color = "#0abde3"
             elif i in self.swap_selected:
-                color_top = Colors.LETTER_SWAP
-                color_shadow = "#ff4757"
+                fill_color = Colors.LETTER_SWAP
+                outline_color = "#ff4757"
             else:
-                color_top = Colors.LETTER_TILE
-                color_shadow = Colors.LETTER_TILE_SHADOW
+                fill_color = Colors.LETTER_TILE
+                outline_color = Colors.LETTER_TILE_SHADOW
             
-            # Рисуем плитку с 3D эффектом
-            create_3d_tile(self.rack, x, 55, 
-                          self.tile_width, self.tile_height,
-                          color_top, color_shadow, ch, Colors.LETTER_TEXT)
+            # Рисуем плитку простым способом (без 3D пока)
+            half_w = self.tile_width // 2
+            half_h = self.tile_height // 2
             
-            # Очки за букву в углу плитки
+            # Тень
+            self.rack.create_rectangle(
+                x - half_w + 3, y - half_h + 3,
+                x + half_w + 3, y + half_h + 3,
+                fill=outline_color, outline=""
+            )
+            
+            # Основная плитка
+            self.rack.create_rectangle(
+                x - half_w, y - half_h,
+                x + half_w, y + half_h,
+                fill=fill_color, outline=outline_color, width=2
+            )
+            
+            # Буква
+            self.rack.create_text(x, y, 
+                                 text=ch, 
+                                 font=Fonts.TILE_LETTER,
+                                 fill=Colors.LETTER_TEXT,
+                                 anchor="center")
+            
+            # Очки за букву
             points = POINTS.get(ch, 0)
-            self.rack.create_text(x + 22, 82, 
+            self.rack.create_text(x + half_w - 10, y + half_h - 10, 
                                  text=str(points), 
                                  font=("Arial", 9, "bold"),
                                  fill="#34495e")
