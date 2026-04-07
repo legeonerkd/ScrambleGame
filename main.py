@@ -3,9 +3,12 @@ import tkinter as tk
 from tkinter import messagebox
 import ctypes
 import random
+import math
 from models.dictionary import ScrabbleDictionary
 from models.game_state import GameState
 from ui_styles import Colors, Fonts, Sizes, ButtonStyles, GameStyles, create_3d_tile
+from animations import (ScorePopupAnimation, PulseAnimation, ShakeAnimation, 
+                       ParticleEffect, create_float_text, create_shake_effect)
 
 try:
     ctypes.windll.shcore.SetProcessDpiAwareness(1)
@@ -39,6 +42,13 @@ class ScrabbleApp:
         self.drag_start_x = 0          # Начальная позиция X
         self.drag_start_y = 0          # Начальная позиция Y
         self.hover_cell = None         # (r, c) - клетка под курсором
+        
+        # Для анимаций
+        self.pulse_animation = PulseAnimation()  # Пульсация бонусов
+        self.pulse_time = 0
+        self.particles = []            # Активные частицы
+        self.fade_in_letters = {}      # {(r, c): progress} - буквы в процессе появления
+        self.fade_timer = None
 
         self.build_menu()
 
@@ -207,6 +217,9 @@ class ScrabbleApp:
 
         self.build_ui()
         self.refresh()
+        
+        # Запускаем цикл анимации пульсации
+        self.animate_pulse()
 
     # ---------- UI ----------
     def build_ui(self):
@@ -295,9 +308,23 @@ class ScrabbleApp:
                   command=self.add_word_to_dictionary,
                   **ButtonStyles.PRIMARY).pack(side="left", padx=5)
 
+    # ---------- ANIMATIONS ----------
+    def animate_pulse(self):
+        """Цикл анимации пульсации бонусных клеток"""
+        self.pulse_time += 50
+        
+        # Обновляем частицы
+        self.particles = [p for p in self.particles if not p.update(self.pulse_time)]
+        
+        self.refresh()
+        self.root.after(50, self.animate_pulse)  # 20 FPS для пульсации
+    
     # ---------- DRAW ----------
     def refresh(self):
         self.board.delete("all")
+        
+        # Вычисляем масштаб для пульсации
+        pulse_scale = self.pulse_animation.get_scale(self.pulse_time)
 
         for r in range(15):
             for c in range(15):
@@ -347,24 +374,29 @@ class ScrabbleApp:
                         fill=Colors.CELL_EMPTY, outline=Colors.CELL_OUTLINE, width=1
                     )
                 
-                # Центр доски - большая звездочка
+                # Центр доски - большая звездочка с пульсацией
                 if (r, c) == (7, 7) and (r, c) not in self.state.board:
+                    # Пульсирующая звездочка
+                    star_size = int(20 * pulse_scale)
                     self.board.create_text(
                         x + Sizes.CELL_SIZE // 2, 
                         y + Sizes.CELL_SIZE // 2,
-                        text="★", font=Fonts.BONUS_CENTER, fill=Colors.BONUS_WORD_2X
+                        text="★", font=("Arial", star_size), fill=Colors.BONUS_WORD_2X
                     )
 
-                # Текст бонуса
+                # Текст бонуса с пульсацией
                 elif (r, c) in self.state.bonus_spots and (r, c) not in self.state.board and (r, c) != (7, 7):
                     kind, mult = self.state.bonus_spots[(r, c)]
                     bonus_text = f"×{mult}"
                     text_color = Colors.TEXT_LIGHT
+                    
+                    # Размер текста с пульсацией
+                    bonus_size = int(8 * pulse_scale)
                     self.board.create_text(
                         x + Sizes.CELL_SIZE // 2, 
                         y + Sizes.CELL_SIZE // 2,
                         text=bonus_text, 
-                        font=Fonts.BONUS_TEXT,
+                        font=("Arial", bonus_size, "bold"),
                         fill=text_color
                     )
 
@@ -373,13 +405,25 @@ class ScrabbleApp:
         for (r, c), ch in self.state.board.items():
             x, y = c * Sizes.CELL_SIZE, r * Sizes.CELL_SIZE
             
+            # Проверяем fade-in анимацию
+            fade_progress = self.fade_in_letters.get((r, c), 1.0)
+            is_fading = (r, c) in self.fade_in_letters
+            
+            # Эффект масштабирования при появлении
+            if is_fading:
+                scale = 0.5 + 0.5 * fade_progress
+                font_size = int(18 * scale)
+                letter_font = ("Arial", font_size, "bold")
+            else:
+                letter_font = Fonts.TILE_LETTER_LARGE if (r, c) in self.last_move else Fonts.TILE_LETTER
+            
             if (r, c) in self.last_move:
                 # Подсвеченная буква - белая и крупная
                 self.board.create_text(
                     x + Sizes.CELL_SIZE // 2,
                     y + Sizes.CELL_SIZE // 2,
                     text=ch, 
-                    font=Fonts.TILE_LETTER_LARGE,
+                    font=letter_font,
                     fill=Colors.HIGHLIGHT_TEXT
                 )
                 # Очки за букву
@@ -397,7 +441,7 @@ class ScrabbleApp:
                     x + Sizes.CELL_SIZE // 2,
                     y + Sizes.CELL_SIZE // 2,
                     text=ch, 
-                    font=Fonts.TILE_LETTER,
+                    font=letter_font,
                     fill="#2c3e50"
                 )
                 # Очки за букву в правом нижнем углу
@@ -525,9 +569,35 @@ class ScrabbleApp:
         if not self.dragging or not self.drag_letter:
             return
         
-        # Визуализация перетаскивания - обновляем превью
-        # (пока просто отслеживаем, реальная визуализация в refresh)
-        pass
+        # Если курсор над доской - показываем где упадет буква
+        # Преобразуем координаты из rack в board
+        board_widget = self.board
+        
+        # Получаем координаты доски относительно окна
+        try:
+            board_x = board_widget.winfo_rootx()
+            board_y = board_widget.winfo_rooty()
+            rack_x = self.rack.winfo_rootx()
+            rack_y = self.rack.winfo_rooty()
+            
+            # Координаты курсора относительно окна
+            cursor_x = rack_x + e.x
+            cursor_y = rack_y + e.y
+            
+            # Проверяем находится ли курсор над доской
+            if (board_x <= cursor_x <= board_x + Sizes.BOARD_SIZE and
+                board_y <= cursor_y <= board_y + Sizes.BOARD_SIZE):
+                # Вычисляем клетку на доске
+                rel_x = cursor_x - board_x
+                rel_y = cursor_y - board_y
+                c = rel_x // Sizes.CELL_SIZE
+                r = rel_y // Sizes.CELL_SIZE
+                
+                if 0 <= r < 15 and 0 <= c < 15:
+                    self.hover_cell = (r, c)
+                    self.refresh()
+        except:
+            pass
     
     def on_rack_release(self, e):
         """Отпускание кнопки мыши на стойке"""
@@ -603,12 +673,32 @@ class ScrabbleApp:
         ok, msg = self.state.can_place(self.current, letters)
 
         if not ok:
+            # Встряхивание при ошибке
             messagebox.showerror("Ошибка", msg)
             self.cancel_turn()
             return
 
+        # Вычисляем очки ДО применения хода
+        score, _ = self.state._calc_score(letters)
+        
         # Применяем ход с подсветкой
         self.apply_move_with_highlight(self.current, letters)
+        
+        # Анимация всплывающих очков в центре слова
+        if letters:
+            center_r = sum(r for r, c, _ in letters) // len(letters)
+            center_c = sum(c for r, c, _ in letters) // len(letters)
+            x = center_c * Sizes.CELL_SIZE + Sizes.CELL_SIZE // 2
+            y = center_r * Sizes.CELL_SIZE + Sizes.CELL_SIZE // 2
+            
+            # Всплывающий текст с очками
+            create_float_text(self.board, x, y + 30, f"+{score}", Colors.SUCCESS, 1200)
+            
+            # Если использовали все 7 букв - конфетти!
+            if len(letters) == 7:
+                particle = ParticleEffect(self.board, x, y, count=30)
+                self.particles.append(particle)
+        
         self.turn_letters.clear()
         self.end_turn()
 
@@ -644,17 +734,46 @@ class ScrabbleApp:
         self.refresh()
     
     def apply_move_with_highlight(self, player, letters):
-        """Применяет ход с подсветкой"""
+        """Применяет ход с подсветкой и анимациями"""
         # Сохраняем координаты для подсветки
         self.last_move = [(r, c) for r, c, _ in letters]
         
+        # Добавляем буквы в fade-in анимацию
+        for r, c, _ in letters:
+            self.fade_in_letters[(r, c)] = 0.0
+        
         # Применяем ход
         self.state.apply_move(player, letters)
+        
+        # Запускаем анимацию fade-in
+        self.animate_fade_in()
         
         # Запускаем таймер для отключения подсветки
         if self.highlight_timer:
             self.root.after_cancel(self.highlight_timer)
         self.highlight_timer = self.root.after(2500, self.clear_highlight)
+    
+    def animate_fade_in(self):
+        """Анимация плавного появления букв"""
+        if not self.fade_in_letters:
+            return
+        
+        # Обновляем прогресс всех букв
+        completed = []
+        for pos in self.fade_in_letters:
+            self.fade_in_letters[pos] += 0.1
+            if self.fade_in_letters[pos] >= 1.0:
+                completed.append(pos)
+        
+        # Удаляем завершенные
+        for pos in completed:
+            del self.fade_in_letters[pos]
+        
+        self.refresh()
+        
+        # Продолжаем если есть незавершенные
+        if self.fade_in_letters:
+            self.fade_timer = self.root.after(30, self.animate_fade_in)
     
     # ---------- END TURN ----------
     def end_turn(self):
@@ -684,11 +803,29 @@ class ScrabbleApp:
             best_move = self.smart_ai.find_best_move(self.state, self.player2)
             
             if best_move:
+                # Сбрасываем счетчик замен при успешном ходе
+                self.ai_swap_counter = 0
+                
                 # Применяем найденный ход
                 self.apply_move_with_highlight(self.player2, best_move.letters)
+                
+                # Анимация всплывающих очков для AI
+                if best_move.letters:
+                    center_r = sum(r for r, c, _ in best_move.letters) // len(best_move.letters)
+                    center_c = sum(c for r, c, _ in best_move.letters) // len(best_move.letters)
+                    x = center_c * Sizes.CELL_SIZE + Sizes.CELL_SIZE // 2
+                    y = center_r * Sizes.CELL_SIZE + Sizes.CELL_SIZE // 2
+                    
+                    create_float_text(self.board, x, y + 30, f"+{best_move.score}", Colors.DANGER, 1200)
+                    
+                    # Конфетти если 7 букв
+                    if len(best_move.letters) == 7:
+                        particle = ParticleEffect(self.board, x, y, count=30)
+                        self.particles.append(particle)
+                
                 messagebox.showinfo("Ход AI", 
-                                  f"AI составил слово: {best_move.word}\n"
-                                  f"Очки: {best_move.score}")
+                                  f"🤖 AI составил слово: {best_move.word}\n"
+                                  f"✨ Очки: {best_move.score}")
                 self.end_turn()
                 return
         
@@ -705,21 +842,37 @@ class ScrabbleApp:
                         test_letters = [(nr, nc, letter)]
                         ok, _ = self.state.can_place(self.player2, test_letters)
                         if ok:
+                            # Сбрасываем счетчик при успешном ходе
+                            self.ai_swap_counter = 0
                             self.apply_move_with_highlight(self.player2, test_letters)
                             self.end_turn()
                             return
         
         # Если не нашли ход - меняем буквы или пропускаем
-        if len(rack) >= 3 and len(self.state.bag) >= 3:
-            to_swap = random.sample(rack, 3)
+        # ВАЖНО: Ограничиваем количество замен подряд
+        if not hasattr(self, 'ai_swap_counter'):
+            self.ai_swap_counter = 0
+        
+        if len(rack) >= 3 and len(self.state.bag) >= 3 and self.ai_swap_counter < 2:
+            # Меняем буквы (максимум 2 раза подряд)
+            to_swap = random.sample(rack, min(3, len(rack)))
             self.state.swap_letters(self.player2, to_swap)
-            messagebox.showinfo("Ход AI", "AI меняет 3 буквы")
+            self.ai_swap_counter += 1
+            messagebox.showinfo("Ход AI", f"🤖 AI меняет {len(to_swap)} буквы")
+            
+            # ВАЖНО: Обновляем интерфейс и завершаем ход
+            self.refresh()
+            self.end_turn()
         else:
+            # Пропускаем ход и сбрасываем счетчик
+            self.ai_swap_counter = 0
+            messagebox.showinfo("Ход AI", "🤖 AI пропускает ход")
+            
+            # Переключаем игрока вручную и обновляем
             self.current = self.player1
             self.state.current = self.player1
-            messagebox.showinfo("Ход AI", "AI пропускает ход")
-        
-        self.refresh()
+            self.refresh()
+            self.end_turn()
     
     # ---------- ADD WORD TO DICTIONARY ----------
     def add_word_to_dictionary(self):

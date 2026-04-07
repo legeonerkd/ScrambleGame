@@ -59,25 +59,29 @@ class SmartAI:
         
         print(f"Done! {len(self.trie)} words loaded.")
     
-    def find_best_move(self, game_state, player: str) -> Optional[Move]:
+    def find_best_move(self, game_state, player: str, timeout: int = 3000) -> Optional[Move]:
         """
         Находит лучший ход для AI.
         
         Args:
             game_state: Состояние игры
             player: Имя игрока (AI)
+            timeout: Максимальное время поиска в мс (по умолчанию 3 сек)
             
         Returns:
             Лучший ход или None если ход невозможен
         """
+        import time
+        start_time = time.time()
+        
         rack = game_state.racks[player]
         
         # Если первый ход - простая стратегия
         if game_state.is_first_move():
             return self._find_first_move(game_state, player, rack)
         
-        # Находим все возможные ходы
-        possible_moves = self._find_all_moves(game_state, player, rack)
+        # Находим все возможные ходы с ограничением по времени
+        possible_moves = self._find_all_moves(game_state, player, rack, start_time, timeout / 1000.0)
         
         if not possible_moves:
             return None
@@ -118,27 +122,45 @@ class SmartAI:
         
         return Move(letters, score, word)
     
-    def _find_all_moves(self, game_state, player: str, rack: List[str]) -> List[Move]:
+    def _find_all_moves(self, game_state, player: str, rack: List[str], 
+                       start_time: float = 0, timeout: float = 3.0) -> List[Move]:
         """
         Находит все возможные ходы.
         
         Использует алгоритм якорных точек - для каждой пустой клетки
         рядом с заполненной пробует составить слова.
+        
+        Args:
+            game_state: Состояние игры
+            player: Имя игрока
+            rack: Стойка игрока
+            start_time: Время начала поиска
+            timeout: Максимальное время поиска в секундах
         """
+        import time
         moves = []
         anchor_points = self._find_anchor_points(game_state)
         
         # Ограничиваем количество проверяемых якорных точек для производительности
-        max_anchors = 20 if self.difficulty == "easy" else 50 if self.difficulty == "medium" else 100
+        max_anchors = 15 if self.difficulty == "easy" else 30 if self.difficulty == "medium" else 50
         
-        for anchor in anchor_points[:max_anchors]:
+        for i, anchor in enumerate(anchor_points[:max_anchors]):
+            # Проверяем таймаут каждые 5 якорных точек
+            if i % 5 == 0 and start_time > 0:
+                if time.time() - start_time > timeout:
+                    break
+            
             # Пробуем горизонтальные слова
             horizontal_moves = self._try_horizontal_at(game_state, player, rack, anchor)
-            moves.extend(horizontal_moves)
+            moves.extend(horizontal_moves[:5])  # Берем только топ-5 из каждой позиции
             
             # Пробуем вертикальные слова
             vertical_moves = self._try_vertical_at(game_state, player, rack, anchor)
-            moves.extend(vertical_moves)
+            moves.extend(vertical_moves[:5])  # Берем только топ-5
+            
+            # Если нашли достаточно хороших ходов - прекращаем поиск
+            if len(moves) > 50:
+                break
         
         return moves
     
