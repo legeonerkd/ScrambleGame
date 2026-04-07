@@ -31,6 +31,14 @@ class ScrabbleApp:
         # Для подсветки последнего хода
         self.last_move = []            # [(r, c)] - координаты последнего хода
         self.highlight_timer = None    # Таймер для анимации
+        
+        # Для Drag & Drop
+        self.dragging = False          # Идет ли перетаскивание
+        self.drag_letter = None        # (index, ch) - перетаскиваемая буква
+        self.drag_preview = None       # ID элемента превью на canvas
+        self.drag_start_x = 0          # Начальная позиция X
+        self.drag_start_y = 0          # Начальная позиция Y
+        self.hover_cell = None         # (r, c) - клетка под курсором
 
         self.build_menu()
 
@@ -88,6 +96,32 @@ class ScrabbleApp:
                             activeforeground=Colors.SUCCESS,
                             cursor='hand2')
         rb2.pack(anchor="w", pady=5)
+        
+        # Выбор сложности AI
+        self.difficulty_frame = tk.Frame(mode_frame, bg=Colors.BG_CARD)
+        
+        tk.Label(self.difficulty_frame, text="   Сложность AI:", 
+                font=Fonts.SMALL,
+                bg=Colors.BG_CARD,
+                fg=Colors.TEXT_SECONDARY).pack(anchor='w', pady=(10, 5))
+        
+        self.ai_difficulty = tk.StringVar(value="medium")
+        
+        diff_buttons = tk.Frame(self.difficulty_frame, bg=Colors.BG_CARD)
+        diff_buttons.pack(anchor='w', padx=20)
+        
+        tk.Radiobutton(diff_buttons, text="Легко", variable=self.ai_difficulty,
+                      value="easy", bg=Colors.BG_CARD, fg=Colors.TEXT_LIGHT,
+                      selectcolor=Colors.BG_LIGHT, font=Fonts.SMALL,
+                      activebackground=Colors.BG_CARD).pack(side='left', padx=5)
+        tk.Radiobutton(diff_buttons, text="Средне", variable=self.ai_difficulty,
+                      value="medium", bg=Colors.BG_CARD, fg=Colors.TEXT_LIGHT,
+                      selectcolor=Colors.BG_LIGHT, font=Fonts.SMALL,
+                      activebackground=Colors.BG_CARD).pack(side='left', padx=5)
+        tk.Radiobutton(diff_buttons, text="Сложно", variable=self.ai_difficulty,
+                      value="hard", bg=Colors.BG_CARD, fg=Colors.TEXT_LIGHT,
+                      selectcolor=Colors.BG_LIGHT, font=Fonts.SMALL,
+                      activebackground=Colors.BG_CARD).pack(side='left', padx=5)
 
         # Поля ввода имен
         input_frame = tk.Frame(self.menu, bg=Colors.BG_DARK)
@@ -136,7 +170,13 @@ class ScrabbleApp:
         if self.mode.get() == "ai":
             self.e2.pack_forget()
             self.e2_label.pack_forget()
+            # Показываем выбор сложности AI
+            if hasattr(self, 'difficulty_frame'):
+                self.difficulty_frame.pack(anchor='w', pady=5)
         else:
+            # Скрываем выбор сложности AI
+            if hasattr(self, 'difficulty_frame'):
+                self.difficulty_frame.pack_forget()
             if not self.e2_label.winfo_ismapped():
                 self.e2_label.pack(anchor='w')
                 self.e2.pack(pady=(5, 10), ipady=5)
@@ -145,7 +185,7 @@ class ScrabbleApp:
     def start_game(self):
         self.player1 = self.e1.get()
         if self.mode.get() == "ai":
-            self.player2 = "Степан"
+            self.player2 = "🤖 Степан (AI)"
             self.is_ai = True
         else:
             self.player2 = self.e2.get()
@@ -156,6 +196,14 @@ class ScrabbleApp:
         self.dictionary = ScrabbleDictionary()
         self.state = GameState([self.player1, self.player2], self.dictionary)
         self.current = self.state.current
+        
+        # Инициализируем SmartAI если играем против AI
+        if self.is_ai:
+            from services.ai_service import SmartAI
+            difficulty = self.ai_difficulty.get()
+            self.smart_ai = SmartAI(self.dictionary, difficulty=difficulty)
+        else:
+            self.smart_ai = None
 
         self.build_ui()
         self.refresh()
@@ -199,14 +247,19 @@ class ScrabbleApp:
                               bg=Colors.BOARD_BG,
                               highlightthickness=0)
         self.board.pack(padx=5, pady=5)
+        # Обработчики для клика и drop
         self.board.bind("<Button-1>", self.on_board_click)
+        self.board.bind("<Motion>", self.on_board_motion)
+        self.board.bind("<ButtonRelease-1>", self.on_board_drop)
+        # Правая кнопка для отмены выбора
+        self.board.bind("<Button-3>", self.on_board_right_click)
 
         # Стойка с буквами
         rack_frame = tk.Frame(main_container, bg=Colors.BG_CARD, 
                              relief='flat', borderwidth=0)
         rack_frame.pack(pady=(0, 15))
         
-        tk.Label(rack_frame, text="Ваши буквы:", 
+        tk.Label(rack_frame, text="Ваши буквы (перетащите на доску мышью):", 
                 font=Fonts.BODY,
                 bg=Colors.BG_CARD,
                 fg=Colors.TEXT_SECONDARY).pack(pady=(5, 5))
@@ -217,7 +270,10 @@ class ScrabbleApp:
                              bg=Colors.BG_CARD,
                              highlightthickness=0)
         self.rack.pack(padx=10, pady=(0, 10))
-        self.rack.bind("<Button-1>", self.on_rack_click)
+        # Привязываем события для Drag & Drop
+        self.rack.bind("<Button-1>", self.on_rack_press)
+        self.rack.bind("<B1-Motion>", self.on_rack_drag)
+        self.rack.bind("<ButtonRelease-1>", self.on_rack_release)
 
         # Кнопки управления
         btns = tk.Frame(main_container, bg=Colors.BG_DARK)
@@ -248,12 +304,18 @@ class ScrabbleApp:
                 x, y = c * Sizes.CELL_SIZE, r * Sizes.CELL_SIZE
                 
                 # Определяем стиль клетки
-                if (r, c) in self.last_move:
+                if self.hover_cell and self.hover_cell == (r, c):
+                    # Подсветка клетки под курсором при перетаскивании
+                    self.board.create_rectangle(
+                        x + 1, y + 1, x + Sizes.CELL_SIZE - 1, y + Sizes.CELL_SIZE - 1,
+                        fill="#a29bfe", outline="#6c5ce7", width=3
+                    )
+                elif (r, c) in self.last_move:
                     # Подсветка последнего хода - яркая с тенью
-                    # Тень
+                    # Тень (используем серый вместо прозрачного)
                     self.board.create_rectangle(
                         x + 2, y + 2, x + Sizes.CELL_SIZE + 2, y + Sizes.CELL_SIZE + 2,
-                        fill="#00000030", outline=""
+                        fill="#7f8c8d", outline=""
                     )
                     # Клетка
                     self.board.create_rectangle(
@@ -352,10 +414,10 @@ class ScrabbleApp:
         for r, c, _, ch in self.turn_letters:
             x, y = c * Sizes.CELL_SIZE, r * Sizes.CELL_SIZE
             
-            # Тень превью
+            # Тень превью (используем темно-фиолетовый)
             self.board.create_rectangle(
                 x + 2, y + 2, x + Sizes.CELL_SIZE + 1, y + Sizes.CELL_SIZE + 1,
-                fill="#00000020", outline=""
+                fill="#6c5ce7", outline=""
             )
             # Клетка превью
             self.board.create_rectangle(
@@ -428,35 +490,101 @@ class ScrabbleApp:
         
         self.info.config(text=line1 + line2)
 
-    # ---------- INPUT ----------
-    def on_rack_click(self, e):
-        idx = e.x // 70  # Обновлено под новые размеры
+    # ---------- DRAG & DROP ----------
+    def on_rack_press(self, e):
+        """Начало перетаскивания буквы"""
+        idx = e.x // 70
         rack = self.state.racks[self.current]
 
         if not (0 <= idx < len(rack)):
             return
+        
+        # Проверяем что буква не используется
+        used = {i for _, _, i, _ in self.turn_letters}
+        if idx in used:
+            return
 
         if self.swap_mode:
+            # В режиме замены - просто выбираем
             if idx in self.swap_selected:
                 self.swap_selected.remove(idx)
             elif len(self.swap_selected) < 3:
                 self.swap_selected.append(idx)
+            self.refresh()
         else:
+            # Начинаем перетаскивание
+            self.dragging = True
+            self.drag_letter = (idx, rack[idx])
+            self.drag_start_x = e.x
+            self.drag_start_y = e.y
             self.selected_tile = (idx, rack[idx])
-
-        self.refresh()
-
-    def on_board_click(self, e):
+            self.refresh()
+    
+    def on_rack_drag(self, e):
+        """Перетаскивание буквы по стойке"""
+        if not self.dragging or not self.drag_letter:
+            return
+        
+        # Визуализация перетаскивания - обновляем превью
+        # (пока просто отслеживаем, реальная визуализация в refresh)
+        pass
+    
+    def on_rack_release(self, e):
+        """Отпускание кнопки мыши на стойке"""
+        if self.dragging:
+            self.dragging = False
+            # Буква осталась выбранной для размещения на доске
+    
+    def on_board_motion(self, e):
+        """Движение мыши над доской (для превью позиции)"""
+        if not self.selected_tile or self.swap_mode:
+            self.hover_cell = None
+            return
+        
+        # Определяем клетку под курсором
+        r, c = e.y // Sizes.CELL_SIZE, e.x // Sizes.CELL_SIZE
+        
+        if 0 <= r < 15 and 0 <= c < 15 and (r, c) not in self.state.board:
+            if self.hover_cell != (r, c):
+                self.hover_cell = (r, c)
+                self.refresh()
+        else:
+            if self.hover_cell is not None:
+                self.hover_cell = None
+                self.refresh()
+    
+    def on_board_drop(self, e):
+        """Отпускание буквы на доске (Drag & Drop)"""
         if not self.selected_tile or self.swap_mode:
             return
 
-        r, c = e.y // Sizes.CELL_SIZE, e.x // Sizes.CELL_SIZE  # Используем константу
+        r, c = e.y // Sizes.CELL_SIZE, e.x // Sizes.CELL_SIZE
+        
+        # Проверяем границы
+        if not (0 <= r < 15 and 0 <= c < 15):
+            return
+        
         if (r, c) in self.state.board:
             return
 
         idx, ch = self.selected_tile
         self.turn_letters.append((r, c, idx, ch))
         self.selected_tile = None
+        self.dragging = False
+        self.refresh()
+
+    def on_board_click(self, e):
+        """Клик на доске (старый метод, для обратной совместимости)"""
+        # Теперь используется on_board_drop, но оставляем для совместимости
+        pass
+    
+    def on_board_right_click(self, e):
+        """Правый клик на доске - возврат последней буквы на стойку"""
+        if not self.turn_letters:
+            return
+        
+        # Убираем последнюю размещенную букву
+        self.turn_letters.pop()
         self.refresh()
 
     # ---------- TURN ----------
@@ -549,114 +677,32 @@ class ScrabbleApp:
 
     # ---------- AI ----------
     def make_ai_move(self):
-        """Упрощенный AI - пытается найти слово из имеющихся букв"""
+        """Умный AI с использованием Trie и алгоритма якорных точек"""
+        
+        # Используем SmartAI если доступен
+        if hasattr(self, 'smart_ai') and self.smart_ai:
+            best_move = self.smart_ai.find_best_move(self.state, self.player2)
+            
+            if best_move:
+                # Применяем найденный ход
+                self.apply_move_with_highlight(self.player2, best_move.letters)
+                messagebox.showinfo("Ход AI", 
+                                  f"AI составил слово: {best_move.word}\n"
+                                  f"Очки: {best_move.score}")
+                self.end_turn()
+                return
+        
+        # Если SmartAI не смог найти ход, используем резервную стратегию
         rack = self.state.racks[self.player2][:]
         
-        # Получаем все слова из обоих словарей
-        all_words = list(self.dictionary.words | self.dictionary.custom_words)
-        
-        # Фильтруем только слова длиной 3-7 букв
-        all_words = [w for w in all_words if 3 <= len(w) <= 7]
-        all_words.sort(key=len)
-        random.shuffle(all_words)
-        
-        # Если это первый ход - пытаемся разместить в центре
-        if self.state.is_first_move():
-            for word in all_words[:1000]:
-                if all(rack.count(c) >= word.count(c) for c in word):
-                    start_col = max(0, 7 - len(word) // 2)
-                    if start_col + len(word) > 15:
-                        start_col = 15 - len(word)
-                    
-                    letters = [(7, start_col + i, ch) for i, ch in enumerate(word)]
-                    ok, msg = self.state.can_place(self.player2, letters)
-                    if ok:
-                        # Сохраняем координаты для подсветки
-                        self.last_move = [(r, c) for r, c, _ in letters]
-                        self.state.apply_move(self.player2, letters)
-                        # Запускаем таймер для отключения подсветки
-                        if self.highlight_timer:
-                            self.root.after_cancel(self.highlight_timer)
-                        self.highlight_timer = self.root.after(2500, self.clear_highlight)
-                        self.end_turn()
-                        return
-        else:
-            # Не первый ход - ПРОСТАЯ СТРАТЕГИЯ: добавляем 2-3 буквы рядом
-            
-            # Стратегия 1: Добавляем 2 буквы рядом с существующими
-            for (r, c) in self.state.board.keys():
-                # Пробуем все комбинации из 2 букв из стойки
-                for i, letter1 in enumerate(rack):
-                    for j, letter2 in enumerate(rack):
-                        if i >= j:
-                            continue
-                        
-                        # Горизонтально справа
-                        if c < 13 and (r, c+1) not in self.state.board and (r, c+2) not in self.state.board:
-                            test_letters = [(r, c+1, letter1), (r, c+2, letter2)]
-                            ok, _ = self.state.can_place(self.player2, test_letters)
-                            if ok:
-                                self.apply_move_with_highlight(self.player2, test_letters)
-                                self.end_turn()
-                                return
-                        
-                        # Горизонтально слева
-                        if c > 1 and (r, c-1) not in self.state.board and (r, c-2) not in self.state.board:
-                            test_letters = [(r, c-2, letter1), (r, c-1, letter2)]
-                            ok, _ = self.state.can_place(self.player2, test_letters)
-                            if ok:
-                                self.apply_move_with_highlight(self.player2, test_letters)
-                                self.end_turn()
-                                return
-                        
-                        # Вертикально вниз
-                        if r < 13 and (r+1, c) not in self.state.board and (r+2, c) not in self.state.board:
-                            test_letters = [(r+1, c, letter1), (r+2, c, letter2)]
-                            ok, _ = self.state.can_place(self.player2, test_letters)
-                            if ok:
-                                self.apply_move_with_highlight(self.player2, test_letters)
-                                self.end_turn()
-                                return
-                        
-                        # Вертикально вверх
-                        if r > 1 and (r-1, c) not in self.state.board and (r-2, c) not in self.state.board:
-                            test_letters = [(r-2, c, letter1), (r-1, c, letter2)]
-                            ok, _ = self.state.can_place(self.player2, test_letters)
-                            if ok:
-                                self.apply_move_with_highlight(self.player2, test_letters)
-                                self.end_turn()
-                                return
-            
-            # Стратегия 2: Добавляем 1 букву
-            for (r, c) in self.state.board.keys():
-                for letter in rack:
-                    # Справа
-                    if c < 14 and (r, c+1) not in self.state.board:
-                        test_letters = [(r, c+1, letter)]
-                        ok, _ = self.state.can_place(self.player2, test_letters)
-                        if ok:
-                            self.apply_move_with_highlight(self.player2, test_letters)
-                            self.end_turn()
-                            return
-                    # Слева
-                    if c > 0 and (r, c-1) not in self.state.board:
-                        test_letters = [(r, c-1, letter)]
-                        ok, _ = self.state.can_place(self.player2, test_letters)
-                        if ok:
-                            self.apply_move_with_highlight(self.player2, test_letters)
-                            self.end_turn()
-                            return
-                    # Снизу
-                    if r < 14 and (r+1, c) not in self.state.board:
-                        test_letters = [(r+1, c, letter)]
-                        ok, _ = self.state.can_place(self.player2, test_letters)
-                        if ok:
-                            self.apply_move_with_highlight(self.player2, test_letters)
-                            self.end_turn()
-                            return
-                    # Сверху
-                    if r > 0 and (r-1, c) not in self.state.board:
-                        test_letters = [(r-1, c, letter)]
+        # Резервная стратегия: пробуем добавить 1 букву рядом
+        for (r, c) in self.state.board.keys():
+            for letter in rack:
+                # Пробуем 4 направления
+                for dr, dc in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
+                    nr, nc = r + dr, c + dc
+                    if 0 <= nr < 15 and 0 <= nc < 15 and (nr, nc) not in self.state.board:
+                        test_letters = [(nr, nc, letter)]
                         ok, _ = self.state.can_place(self.player2, test_letters)
                         if ok:
                             self.apply_move_with_highlight(self.player2, test_letters)
