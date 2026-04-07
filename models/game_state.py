@@ -204,17 +204,33 @@ class GameState:
         # КЛАССИЧЕСКОЕ ПРАВИЛО SCRABBLE: Новые слова должны использовать существующие буквы
         # (кроме первого хода)
         if not self.is_first_move():
-            # Проверяем что хотя бы одна новая буква примыкает к существующей
-            has_connection = False
-            for r, c, ch in letters:
-                # Проверяем соседние клетки (вверх, вниз, влево, вправо)
-                if ((r-1, c) in self.board or (r+1, c) in self.board or 
-                    (r, c-1) in self.board or (r, c+1) in self.board):
-                    has_connection = True
+            # Проверяем что основное слово ПРОХОДИТ ЧЕРЕЗ существующую букву
+            # (а не просто примыкает рядом)
+            uses_existing_letter = False
+            
+            for pos in coords:
+                # Если в составе основного слова есть уже размещенная буква
+                if pos in self.board and pos not in placed:
+                    uses_existing_letter = True
                     break
             
-            if not has_connection:
-                return False, "Новое слово должно использовать хотя бы одну букву из существующих слов"
+            # Если не используем существующие буквы в основном слове,
+            # проверяем что хотя бы создаем валидное побочное слово
+            if not uses_existing_letter:
+                # Проверяем создаются ли побочные слова (пересечения)
+                has_cross_word = False
+                for r, c, ch in letters:
+                    sdr, sdc = (1, 0) if dr == 0 else (0, 1)
+                    w, wcoords = self._collect_word(r, c, sdr, sdc, placed)
+                    # Побочное слово должно включать существующие буквы
+                    if len(w) >= 2:
+                        for wpos in wcoords:
+                            if wpos in self.board and wpos not in placed:
+                                has_cross_word = True
+                                break
+                
+                if not uses_existing_letter and not has_cross_word:
+                    return False, "Новое слово должно использовать существующие буквы (проходить через них или создавать пересечения)"
         
         # НОВОЕ ПРАВИЛО: Проверка минимальной длины слова (минимум 3 буквы)
         if len(main_word) < 3:

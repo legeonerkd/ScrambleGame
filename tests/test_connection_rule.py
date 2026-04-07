@@ -23,7 +23,7 @@ class TestConnectionRule:
         ok, msg = state.can_place('Игрок2', letters2)
         
         assert ok == False
-        assert "использовать хотя бы одну букву" in msg.lower()
+        assert "использовать" in msg.lower() and "существующие" in msg.lower()
     
     def test_second_word_connected_horizontally(self, game_with_words):
         """Второе слово соединяется горизонтально"""
