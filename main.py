@@ -21,8 +21,44 @@ class ScrabbleApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Scrabble - Эрудит")
-        self.root.geometry(f"{Sizes.WINDOW_WIDTH}x{Sizes.WINDOW_HEIGHT}")
+        
+        # Определяем размер экрана
+        screen_width = root.winfo_screenwidth()
+        screen_height = root.winfo_screenheight()
+        
+        # Выбираем режим в зависимости от размера экрана
+        self.is_fullscreen_mode = screen_width >= 1600 and screen_height >= 900
+        
+        if self.is_fullscreen_mode:
+            # Полноэкранный режим для больших мониторов
+            self.window_width = Sizes.WINDOW_WIDTH_FULLSCREEN
+            self.window_height = Sizes.WINDOW_HEIGHT_FULLSCREEN
+            self.board_size = Sizes.BOARD_SIZE_FULLSCREEN
+            self.cell_size = Sizes.CELL_SIZE_FULLSCREEN
+            self.rack_width = Sizes.RACK_WIDTH_FULLSCREEN
+            self.rack_height = Sizes.RACK_HEIGHT_FULLSCREEN
+            self.tile_width = Sizes.TILE_WIDTH_FULLSCREEN
+            self.tile_height = Sizes.TILE_HEIGHT_FULLSCREEN
+            self.tile_spacing = 100
+        else:
+            # Обычный режим
+            self.window_width = Sizes.WINDOW_WIDTH
+            self.window_height = Sizes.WINDOW_HEIGHT
+            self.board_size = Sizes.BOARD_SIZE
+            self.cell_size = Sizes.CELL_SIZE
+            self.rack_width = Sizes.RACK_WIDTH
+            self.rack_height = Sizes.RACK_HEIGHT
+            self.tile_width = Sizes.TILE_WIDTH
+            self.tile_height = Sizes.TILE_HEIGHT
+            self.tile_spacing = 70
+        
+        self.root.geometry(f"{self.window_width}x{self.window_height}")
         self.root.configure(bg=Colors.BG_DARK)
+        
+        # Центрируем окно
+        x = (screen_width - self.window_width) // 2
+        y = (screen_height - self.window_height) // 2
+        self.root.geometry(f"{self.window_width}x{self.window_height}+{x}+{y}")
 
         self.selected_tile = None      # (index, ch)
         self.turn_letters = []         # [(r,c,index,ch)]
@@ -255,8 +291,8 @@ class ScrabbleApp:
         board_frame.pack()
         
         self.board = tk.Canvas(board_frame, 
-                              width=Sizes.BOARD_SIZE, 
-                              height=Sizes.BOARD_SIZE,
+                              width=self.board_size, 
+                              height=self.board_size,
                               bg=Colors.BOARD_BG,
                               highlightthickness=0)
         self.board.pack(padx=5, pady=5)
@@ -278,8 +314,8 @@ class ScrabbleApp:
                 fg=Colors.TEXT_SECONDARY).pack(pady=(5, 5))
         
         self.rack = tk.Canvas(rack_frame, 
-                             width=Sizes.RACK_WIDTH, 
-                             height=Sizes.RACK_HEIGHT,
+                             width=self.rack_width, 
+                             height=self.rack_height,
                              bg=Colors.BG_CARD,
                              highlightthickness=0)
         self.rack.pack(padx=10, pady=(0, 10))
@@ -328,31 +364,31 @@ class ScrabbleApp:
 
         for r in range(15):
             for c in range(15):
-                x, y = c * Sizes.CELL_SIZE, r * Sizes.CELL_SIZE
+                x, y = c * self.cell_size, r * self.cell_size
                 
                 # Определяем стиль клетки
                 if self.hover_cell and self.hover_cell == (r, c):
                     # Подсветка клетки под курсором при перетаскивании
                     self.board.create_rectangle(
-                        x + 1, y + 1, x + Sizes.CELL_SIZE - 1, y + Sizes.CELL_SIZE - 1,
+                        x + 1, y + 1, x + self.cell_size - 1, y + self.cell_size - 1,
                         fill="#a29bfe", outline="#6c5ce7", width=3
                     )
                 elif (r, c) in self.last_move:
                     # Подсветка последнего хода - яркая с тенью
                     # Тень (используем серый вместо прозрачного)
                     self.board.create_rectangle(
-                        x + 2, y + 2, x + Sizes.CELL_SIZE + 2, y + Sizes.CELL_SIZE + 2,
+                        x + 2, y + 2, x + self.cell_size + 2, y + self.cell_size + 2,
                         fill="#7f8c8d", outline=""
                     )
                     # Клетка
                     self.board.create_rectangle(
-                        x + 1, y + 1, x + Sizes.CELL_SIZE - 1, y + Sizes.CELL_SIZE - 1,
+                        x + 1, y + 1, x + self.cell_size - 1, y + self.cell_size - 1,
                         fill=Colors.HIGHLIGHT, outline=Colors.HIGHLIGHT_BORDER, width=3
                     )
                 elif (r, c) in self.state.board:
                     # Занятая клетка - с легкой тенью
                     self.board.create_rectangle(
-                        x + 1, y + 1, x + Sizes.CELL_SIZE - 1, y + Sizes.CELL_SIZE - 1,
+                        x + 1, y + 1, x + self.cell_size - 1, y + self.cell_size - 1,
                         fill=Colors.CELL_FILLED, outline=Colors.CELL_OUTLINE, width=1
                     )
                 elif (r, c) in self.state.bonus_spots:
@@ -364,13 +400,13 @@ class ScrabbleApp:
                     
                     # Бонусная клетка с градиентом (упрощенный)
                     self.board.create_rectangle(
-                        x + 1, y + 1, x + Sizes.CELL_SIZE - 1, y + Sizes.CELL_SIZE - 1,
+                        x + 1, y + 1, x + self.cell_size - 1, y + self.cell_size - 1,
                         fill=fill, outline=Colors.CELL_OUTLINE, width=1
                     )
                 else:
                     # Обычная пустая клетка
                     self.board.create_rectangle(
-                        x + 1, y + 1, x + Sizes.CELL_SIZE - 1, y + Sizes.CELL_SIZE - 1,
+                        x + 1, y + 1, x + self.cell_size - 1, y + self.cell_size - 1,
                         fill=Colors.CELL_EMPTY, outline=Colors.CELL_OUTLINE, width=1
                     )
                 
@@ -379,8 +415,8 @@ class ScrabbleApp:
                     # Пульсирующая звездочка
                     star_size = int(20 * pulse_scale)
                     self.board.create_text(
-                        x + Sizes.CELL_SIZE // 2, 
-                        y + Sizes.CELL_SIZE // 2,
+                        x + self.cell_size // 2, 
+                        y + self.cell_size // 2,
                         text="★", font=("Arial", star_size), fill=Colors.BONUS_WORD_2X
                     )
 
@@ -393,8 +429,8 @@ class ScrabbleApp:
                     # Размер текста с пульсацией
                     bonus_size = int(8 * pulse_scale)
                     self.board.create_text(
-                        x + Sizes.CELL_SIZE // 2, 
-                        y + Sizes.CELL_SIZE // 2,
+                        x + self.cell_size // 2, 
+                        y + self.cell_size // 2,
                         text=bonus_text, 
                         font=("Arial", bonus_size, "bold"),
                         fill=text_color
@@ -403,7 +439,7 @@ class ScrabbleApp:
         # Рисуем буквы на доске
         from models.game_state import POINTS
         for (r, c), ch in self.state.board.items():
-            x, y = c * Sizes.CELL_SIZE, r * Sizes.CELL_SIZE
+            x, y = c * self.cell_size, r * self.cell_size
             
             # Проверяем fade-in анимацию
             fade_progress = self.fade_in_letters.get((r, c), 1.0)
@@ -420,8 +456,8 @@ class ScrabbleApp:
             if (r, c) in self.last_move:
                 # Подсвеченная буква - белая и крупная
                 self.board.create_text(
-                    x + Sizes.CELL_SIZE // 2,
-                    y + Sizes.CELL_SIZE // 2,
+                    x + self.cell_size // 2,
+                    y + self.cell_size // 2,
                     text=ch, 
                     font=letter_font,
                     fill=Colors.HIGHLIGHT_TEXT
@@ -429,8 +465,8 @@ class ScrabbleApp:
                 # Очки за букву
                 points = POINTS.get(ch, 0)
                 self.board.create_text(
-                    x + Sizes.CELL_SIZE - 6,
-                    y + Sizes.CELL_SIZE - 6,
+                    x + self.cell_size - 6,
+                    y + self.cell_size - 6,
                     text=str(points),
                     font=Fonts.TILE_POINTS,
                     fill=Colors.HIGHLIGHT_TEXT
@@ -438,8 +474,8 @@ class ScrabbleApp:
             else:
                 # Обычная буква - темная на светлой клетке
                 self.board.create_text(
-                    x + Sizes.CELL_SIZE // 2,
-                    y + Sizes.CELL_SIZE // 2,
+                    x + self.cell_size // 2,
+                    y + self.cell_size // 2,
                     text=ch, 
                     font=letter_font,
                     fill="#2c3e50"
@@ -447,8 +483,8 @@ class ScrabbleApp:
                 # Очки за букву в правом нижнем углу
                 points = POINTS.get(ch, 0)
                 self.board.create_text(
-                    x + Sizes.CELL_SIZE - 6,
-                    y + Sizes.CELL_SIZE - 6,
+                    x + self.cell_size - 6,
+                    y + self.cell_size - 6,
                     text=str(points),
                     font=Fonts.TILE_POINTS,
                     fill="#7f8c8d"
@@ -456,22 +492,22 @@ class ScrabbleApp:
 
         # Рисуем превью размещения (буквы которые игрок сейчас ставит)
         for r, c, _, ch in self.turn_letters:
-            x, y = c * Sizes.CELL_SIZE, r * Sizes.CELL_SIZE
+            x, y = c * self.cell_size, r * self.cell_size
             
             # Тень превью (используем темно-фиолетовый)
             self.board.create_rectangle(
-                x + 2, y + 2, x + Sizes.CELL_SIZE + 1, y + Sizes.CELL_SIZE + 1,
+                x + 2, y + 2, x + self.cell_size + 1, y + self.cell_size + 1,
                 fill="#6c5ce7", outline=""
             )
             # Клетка превью
             self.board.create_rectangle(
-                x + 1, y + 1, x + Sizes.CELL_SIZE - 1, y + Sizes.CELL_SIZE - 1,
+                x + 1, y + 1, x + self.cell_size - 1, y + self.cell_size - 1,
                 fill="#9b59b6", outline="#8e44ad", width=2
             )
             # Буква превью
             self.board.create_text(
-                x + Sizes.CELL_SIZE // 2,
-                y + Sizes.CELL_SIZE // 2,
+                x + self.cell_size // 2,
+                y + self.cell_size // 2,
                 text=ch, 
                 font=Fonts.TILE_LETTER,
                 fill="white"
@@ -479,8 +515,8 @@ class ScrabbleApp:
             # Очки
             points = POINTS.get(ch, 0)
             self.board.create_text(
-                x + Sizes.CELL_SIZE - 6,
-                y + Sizes.CELL_SIZE - 6,
+                x + self.cell_size - 6,
+                y + self.cell_size - 6,
                 text=str(points),
                 font=Fonts.TILE_POINTS,
                 fill="white"
@@ -496,7 +532,8 @@ class ScrabbleApp:
             if i in used:
                 continue
             
-            x = i * 70 + 40
+            # Вычисляем позицию плитки
+            x = i * self.tile_spacing + (self.tile_width // 2 + 10)
             
             # Определяем цвет плитки
             if self.selected_tile and self.selected_tile[0] == i:
@@ -511,7 +548,7 @@ class ScrabbleApp:
             
             # Рисуем плитку с 3D эффектом
             create_3d_tile(self.rack, x, 55, 
-                          Sizes.TILE_WIDTH, Sizes.TILE_HEIGHT,
+                          self.tile_width, self.tile_height,
                           color_top, color_shadow, ch, Colors.LETTER_TEXT)
             
             # Очки за букву в углу плитки
@@ -537,7 +574,7 @@ class ScrabbleApp:
     # ---------- DRAG & DROP ----------
     def on_rack_press(self, e):
         """Начало перетаскивания буквы"""
-        idx = e.x // 70
+        idx = e.x // self.tile_spacing
         rack = self.state.racks[self.current]
 
         if not (0 <= idx < len(rack)):
@@ -585,13 +622,13 @@ class ScrabbleApp:
             cursor_y = rack_y + e.y
             
             # Проверяем находится ли курсор над доской
-            if (board_x <= cursor_x <= board_x + Sizes.BOARD_SIZE and
-                board_y <= cursor_y <= board_y + Sizes.BOARD_SIZE):
+            if (board_x <= cursor_x <= board_x + self.board_size and
+                board_y <= cursor_y <= board_y + self.board_size):
                 # Вычисляем клетку на доске
                 rel_x = cursor_x - board_x
                 rel_y = cursor_y - board_y
-                c = rel_x // Sizes.CELL_SIZE
-                r = rel_y // Sizes.CELL_SIZE
+                c = rel_x // self.cell_size
+                r = rel_y // self.cell_size
                 
                 if 0 <= r < 15 and 0 <= c < 15:
                     self.hover_cell = (r, c)
@@ -612,7 +649,7 @@ class ScrabbleApp:
             return
         
         # Определяем клетку под курсором
-        r, c = e.y // Sizes.CELL_SIZE, e.x // Sizes.CELL_SIZE
+        r, c = e.y // self.cell_size, e.x // self.cell_size
         
         if 0 <= r < 15 and 0 <= c < 15 and (r, c) not in self.state.board:
             if self.hover_cell != (r, c):
@@ -628,7 +665,7 @@ class ScrabbleApp:
         if not self.selected_tile or self.swap_mode:
             return
 
-        r, c = e.y // Sizes.CELL_SIZE, e.x // Sizes.CELL_SIZE
+        r, c = e.y // self.cell_size, e.x // self.cell_size
         
         # Проверяем границы
         if not (0 <= r < 15 and 0 <= c < 15):
@@ -688,8 +725,8 @@ class ScrabbleApp:
         if letters:
             center_r = sum(r for r, c, _ in letters) // len(letters)
             center_c = sum(c for r, c, _ in letters) // len(letters)
-            x = center_c * Sizes.CELL_SIZE + Sizes.CELL_SIZE // 2
-            y = center_r * Sizes.CELL_SIZE + Sizes.CELL_SIZE // 2
+            x = center_c * self.cell_size + self.cell_size // 2
+            y = center_r * self.cell_size + self.cell_size // 2
             
             # Всплывающий текст с очками
             create_float_text(self.board, x, y + 30, f"+{score}", Colors.SUCCESS, 1200)
@@ -816,8 +853,8 @@ class ScrabbleApp:
                 if best_move.letters:
                     center_r = sum(r for r, c, _ in best_move.letters) // len(best_move.letters)
                     center_c = sum(c for r, c, _ in best_move.letters) // len(best_move.letters)
-                    x = center_c * Sizes.CELL_SIZE + Sizes.CELL_SIZE // 2
-                    y = center_r * Sizes.CELL_SIZE + Sizes.CELL_SIZE // 2
+                    x = center_c * self.cell_size + self.cell_size // 2
+                    y = center_r * self.cell_size + self.cell_size // 2
                     
                     create_float_text(self.board, x, y + 30, f"+{best_move.score}", Colors.DANGER, 1200)
                     

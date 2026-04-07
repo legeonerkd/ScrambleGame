@@ -79,19 +79,33 @@ class Fonts:
 # ============ РАЗМЕРЫ ============
 
 class Sizes:
-    # Окно
+    # Окно - обычный режим
     WINDOW_WIDTH = 950
     WINDOW_HEIGHT = 750
     
-    # Игровое поле
+    # Окно - полноэкранный режим  
+    WINDOW_WIDTH_FULLSCREEN = 1400
+    WINDOW_HEIGHT_FULLSCREEN = 900
+    
+    # Игровое поле - обычный режим
     BOARD_SIZE = 510
     CELL_SIZE = 34
     
-    # Стойка
+    # Игровое поле - полноэкранный режим
+    BOARD_SIZE_FULLSCREEN = 750
+    CELL_SIZE_FULLSCREEN = 50
+    
+    # Стойка - обычный режим
     RACK_WIDTH = 510
     RACK_HEIGHT = 110
     TILE_WIDTH = 58
     TILE_HEIGHT = 70
+    
+    # Стойка - полноэкранный режим
+    RACK_WIDTH_FULLSCREEN = 750
+    RACK_HEIGHT_FULLSCREEN = 140
+    TILE_WIDTH_FULLSCREEN = 90
+    TILE_HEIGHT_FULLSCREEN = 100
     
     # Отступы
     PADDING_SMALL = 5

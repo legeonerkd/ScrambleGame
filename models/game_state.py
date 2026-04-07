@@ -93,31 +93,93 @@ class GameState:
     
     def _deal_initial_rack(self, player: str) -> None:
         """
-        Раздает начальную стойку игроку.
+        Раздает начальную стойку игроку с балансировкой гласных/согласных.
+        
+        Правило: примерно половина гласных, половина согласных (3-4 / 3-4)
         
         Args:
             player: Имя игрока
         """
         rack = []
+        vowels_needed = 3  # Минимум 3 гласные
+        consonants_needed = 3  # Минимум 3 согласные
+        
+        vowels = [ch for ch in self.bag if ch in VOWELS]
+        consonants = [ch for ch in self.bag if ch in CONSONANTS]
+        
+        # Раздаем 3 гласные
+        for _ in range(vowels_needed):
+            if vowels and len(rack) < 7:
+                ch = vowels.pop(0)
+                rack.append(ch)
+                self.bag.remove(ch)
+        
+        # Раздаем 3 согласные
+        for _ in range(consonants_needed):
+            if consonants and len(rack) < 7:
+                ch = consonants.pop(0)
+                rack.append(ch)
+                self.bag.remove(ch)
+        
+        # Добираем до 7 любыми буквами
         while len(rack) < 7 and self.bag:
             ch = self.bag.pop()
             if rack.count(ch) < 2:
                 rack.append(ch)
+        
         self.racks[player] = rack
     
     def refill_rack(self, player: str) -> None:
         """
-        Пополняет стойку игрока до 7 букв.
+        Пополняет стойку игрока до 7 букв с балансировкой.
+        
+        Старается поддерживать баланс гласных/согласных.
         
         Args:
             player: Имя игрока
         """
         rack = self.racks[player]
+        
+        # Подсчитываем текущий баланс
+        vowel_count = sum(1 for ch in rack if ch in VOWELS)
+        consonant_count = sum(1 for ch in rack if ch in CONSONANTS)
+        
+        # Определяем что нужно добавить для баланса
+        needed = 7 - len(rack)
+        
+        if needed <= 0:
+            return
+        
+        # Пытаемся сбалансировать
+        vowels_to_add = max(0, needed // 2 - (vowel_count - consonant_count))
+        consonants_to_add = needed - vowels_to_add
+        
+        vowels = [ch for ch in self.bag if ch in VOWELS]
+        consonants = [ch for ch in self.bag if ch in CONSONANTS]
+        
+        # Добавляем гласные
+        for _ in range(min(vowels_to_add, len(vowels))):
+            if len(rack) >= 7:
+                break
+            ch = vowels.pop(0)
+            if rack.count(ch) < 2:
+                rack.append(ch)
+                self.bag.remove(ch)
+        
+        # Добавляем согласные
+        for _ in range(min(consonants_to_add, len(consonants))):
+            if len(rack) >= 7:
+                break
+            ch = consonants.pop(0)
+            if rack.count(ch) < 2:
+                rack.append(ch)
+                self.bag.remove(ch)
+        
+        # Если не хватило - добираем любыми
         while len(rack) < 7 and self.bag:
             ch = self.bag.pop()
             if rack.count(ch) < 2:
-                rack.append(ch)
-    
+                rack.append(ch)    
     def is_first_move(self) -> bool:
         """
         Проверяет, является ли ход первым в игре.
